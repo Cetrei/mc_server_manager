@@ -9,16 +9,19 @@ mc_server_manager/
 ├── tests/                   — TODOS los tests del proyecto, agnósticos de qué lenguaje use cada app. Ver tests/README.md para la convención completa.
 │   ├── run.ts                    — runner genérico invocado por `bun run test [grupo] [nombre]`
 │   ├── _shared/                  — utilidades compartidas entre grupos (mocks reutilizables, etc.)
-│   ├── cf-tunnel/                — tests del túnel de Cloudflare (spec 01b): mocks offline + E2E real opcional
+│   ├── cf-tunnel/                — tests del túnel de Cloudflare (spec 01b): mocks offline (protocol-mock, live-players) + E2E real opcional (remote-e2e, se salta sin MC_TUNNEL_TEST_DOMAIN)
+│   ├── config-loader/            — tests de packages/config-loader/: dos niveles de config (.yml + env), fallo explícito sin defaults inventados
 │   ├── quadlet-render/           — tests del render de Quadlets (packages/quadlet-render/): resolución de placeholders, fallo ante variables faltantes
 │   ├── cloudflare-bootstrap/     — tests del bootstrap de Cloudflare (spec 09): creación desde cero + idempotencia, mock offline
 │   ├── doppler-bootstrap/        — tests del bootstrap de Doppler (spec 09): creación desde cero + idempotencia, mock offline
-│   └── setup-wizard/             — tests del wizard (spec 09): flujo completo mockeado + detección de .env incompleto
+│   └── setup-wizard/             — tests del wizard (spec 09): flujo completo mockeado + config estructural/secretos incompletos
 ├── docs/
 │   ├── system_spec.md       — Requisitos funcionales y no-funcionales del sistema completo (interfaces /status y /dev, contrato de endpoints de alto nivel)
 │   ├── tech_stack.md        — Stack tecnológico completo: runtimes, infraestructura, capas de datos, networking, seguridad/auth, estructura del monorepo
 │   ├── ARCHITECTURE_CANVAS.pdf — Diagrama visual de arquitectura
 │   ├── standards/            — Convenciones obligatorias de todo el repo (testing, comentarios/clean code, config de infra generada, ubicación de documentación)
+│   ├── decisions/            — ADRs: decisiones de arquitectura puntuales no cubiertas (todavía) por un spec formal
+│   │   └── 0001-single-tunnel-dual-ingress.md — Un túnel de Cloudflare, dos reglas de ingress (TCP minecraft + HTTP api). Ver spec 09 §5 (desactualizado, describe solo el ingress TCP original)
 │   └── specs/
 │       ├── 01_vps_oracle_proxy.md       — [PAUSADO] VPS Oracle: DNAT dinámico, WireGuard, modelo de amenaza y seguridad de red, modelo de mundo único portable (local/VPS). Bloqueado por falta de capacidad en mx-queretaro-1 + CGNAT del ISP. Diseño vigente, retomar cuando haya capacidad o se pague un VPS.
 │       ├── 01b_cloudflare_tunnel_interim.md — [ACTIVO] Arquitectura interina de exposición pública: Cloudflare Tunnel sobre cetrei.dev, mundo siempre en local. Sustituye a 01 mientras esté pausado. Solo cubre Java Edition (TCP), no Bedrock/UDP. Incluye la guía operativa completa (creación del túnel automatizada vía spec 09, con fallback manual documentado).
@@ -29,15 +32,16 @@ mc_server_manager/
 │       ├── 06_daemons_quadlets_systemd.md — Definiciones Quadlet completas, comandos systemd, objetivo de rendimiento/footprint, manejo operativo diario
 │       ├── 07_api_contracts_types.md    — Contratos de datos compartidos (TypeScript + Rust): StatusResponse, MetricsResponse
 │       ├── 08_scheduling_events.md      — Sistema de policies programables, ciclo de vida de eventos de aviso (webhooks, cancelar/snooze), acción relocate
-│       └── 09_bootstrap_automation.md   — [EN PROGRESO] Bootstrap automatizado de Cloudflare/Doppler/Supabase vía paquetes horizontales TS + wizard interactivo. Ver estado real por paquete en el propio spec §13. Repo de GitHub aún no inicializado — issues reales pendientes de crear cuando exista (ver § "Estado de tracking en GitHub" abajo).
+│       └── 09_bootstrap_automation.md   — [EN PROGRESO] Bootstrap automatizado de Cloudflare/Doppler/Supabase vía paquetes horizontales TS + wizard interactivo. Ver estado real por paquete en el propio spec §13 (nota: §5 describe el ingress TCP original, ver docs/decisions/0001-single-tunnel-dual-ingress.md para el diseño vigente de dos ingress). Tracking real en GitHub, ver § "Estado de tracking en GitHub" abajo.
 ├── infra/
 │   ├── cloudflare-tunnel/      — (sin contenido propio actualmente; la guía operativa vive en docs/specs/01b_cloudflare_tunnel_interim.md §6)
 │   └── quadlets/               — Solo la plantilla `.template` (artefacto de infra versionado). La lógica de render vive en packages/quadlet-render/ (spec 09 §4)
 ├── packages/                — Paquetes horizontales TS, un paquete por servicio/responsabilidad compartida (tech_stack.md §6, spec 09 §4)
+│   ├── config-loader/           — Carga y valida los dos niveles de config no-Supabase (estructural .yml + secretos/env), fallo explícito sin defaults inventados. Fuente única que reemplaza los defaults dispersos que antes vivían en cloudflare-bootstrap/setup-wizard.
 │   ├── quadlet-render/          — Lógica de resolución de placeholders + escritura del .container final. Migrado desde infra/quadlets/render.ts
-│   ├── cloudflare-bootstrap/    — Crea túnel + ingress + DNS record vía API de Cloudflare (spec 09 §5). Implementado.
+│   ├── cloudflare-bootstrap/    — Crea túnel + dos reglas de ingress (TCP minecraft + HTTP api) + dos DNS records vía API de Cloudflare (docs/decisions/0001-single-tunnel-dual-ingress.md). Implementado, consume config-loader.
 │   ├── doppler-bootstrap/       — Crea proyecto/config Doppler + upsert de secrets (spec 09 §6). Implementado.
-│   └── supabase-bootstrap/      — [BLOQUEADO] Crea proyecto Supabase vía Management API. Dos decisiones de diseño pendientes antes de implementar (shape de API keys, manejo de ACTIVE_HEALTHY).
+│   └── supabase-bootstrap/      — [BLOQUEADO] Crea proyecto Supabase vía Management API. Dos decisiones de diseño pendientes antes de implementar (shape de API keys, manejo de ACTIVE_HEALTHY). Ver issue #5.
 ├── apps/
 │   └── setup-wizard/            — Punto de entrada único del bootstrap (spec 09 §8). Orquesta cloudflare-bootstrap -> doppler-bootstrap. No incluye supabase-bootstrap todavía (bloqueado, ver spec 09 §7).
 ├── scripts/
@@ -49,17 +53,20 @@ mc_server_manager/
 
 ## Estado del entorno de desarrollo
 
-**`node_modules` no está instalado en este checkout.** Ningún test (nuevo o preexistente) puede correrse hasta hacer `bun install` desde la raíz del repo — incluye la dependencia `@clack/prompts` en `apps/setup-wizard/package.json`. No se ha verificado con `bun run test` que el código de spec 09 compile y pase; se revisó manualmente contra los shapes de API confirmados, pero la verificación real con el runner queda pendiente de que el entorno tenga las dependencias instaladas.
+`bun install && bun run test` corre en verde (11/11) contra el estado actual del repo, incluyendo `packages/config-loader`, el ingress dual de `cloudflare-bootstrap`, y `tests/cf-tunnel/` (incluye `remote-e2e.test.ts`, que se salta con mensaje claro si falta `MC_TUNNEL_TEST_DOMAIN` — nunca rompe un checkout limpio, ver `docs/standards/testing.md`).
 
 ## Estado de tracking en GitHub
 
-**El repo no está inicializado en GitHub todavía** — solo existe el Project standalone "MC Server Manager — Backlog" (sin repo enlazado). Ningún issue real existe aún.
+**El repo `Cetrei/mc_server_manager` existe en GitHub y ya tiene issues reales**, agregados al Project standalone "MC Server Manager — Backlog" (número 3):
 
-Varios specs (`01_vps_oracle_proxy.md`, `01b_cloudflare_tunnel_interim.md`, `09_bootstrap_automation.md`) tenían referencias a números de issue (`#1`, `#29`, `#30`, `#31`, `#32`) y enlaces `github.com/...` como si ya existieran — eran fabricados por una sesión anterior, no reales. Se corrigieron a referencias internas al spec correspondiente. Pendiente cuando se inicialice el repo:
+* [#4](https://github.com/Cetrei/mc_server_manager/issues/4) — EPIC bootstrap automation (spec 09). Status: In Progress.
+* [#5](https://github.com/Cetrei/mc_server_manager/issues/5) — supabase-bootstrap bloqueado (sub-issue de #4). Status: Todo.
+* [#6](https://github.com/Cetrei/mc_server_manager/issues/6) — EPIC VPS Oracle (spec 01), pausado. Status: Todo.
+* [#7](https://github.com/Cetrei/mc_server_manager/issues/7) — Cloudflare Tunnel interino (spec 01b) sin contenido en disco, incluye 06 (Quadlets/systemd). Status: Todo.
 
-1. Crear el repo y enlazarlo al Project existente.
-2. Crear los issues reales (EPIC de bootstrap automation con sub-issue de supabase-bootstrap bloqueado; EPIC de VPS Oracle pausado; issue de Cloudflare Tunnel interino).
-3. Reemplazar las referencias "ver spec X §Y" añadidas en esta limpieza por los links reales a issues donde el spec lo indica.
+**Pendiente manual**: el Project no expone vía API/MCP la acción de "enlazar repositorio" (Project Settings -> Manage access / linked repositories) — agregar el repo ahí a mano para que aparezca en el selector de repos del Project. Los items ya están cargados y trackeables sin ese paso.
+
+Varios specs (`01_vps_oracle_proxy.md`, `01b_cloudflare_tunnel_interim.md`, `09_bootstrap_automation.md`) tenían referencias a números de issue fabricados por una sesión anterior (no correspondían a estos issues reales). Pendiente: reemplazar las referencias "ver spec X §Y" añadidas en la limpieza anterior por links reales a #4–#7 donde corresponda.
 
 ## Limpieza pendiente (manual, fuera del alcance de las herramientas MCP disponibles)
 

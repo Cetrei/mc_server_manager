@@ -1,25 +1,22 @@
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import { runSetupWizard } from "../../apps/setup-wizard/index";
-import { installCombinedFreshMock, MOCK_ENV, assert } from "./_mock-wizard-env";
+import { installCombinedFreshMock, writeMockStructuralConfig, MOCK_ENV, assert } from "./_mock-wizard-env";
 
 export default async function run() {
   const mock = installCombinedFreshMock();
+  const configPath = await writeMockStructuralConfig();
 
   try {
-    await runSetupWizard(MOCK_ENV);
+    await runSetupWizard(configPath, MOCK_ENV);
 
-    const cloudflareCreateCall = mock.cloudflareCalls.find(
-      (c) => c.url.endsWith("/cfd_tunnel") && c.method === "POST"
-    );
+    const cloudflareCreateCall = mock.cloudflareCalls.find((c) => c.url.endsWith("/cfd_tunnel") && c.method === "POST");
     assert(!!cloudflareCreateCall, "el wizard no invocó la creación del túnel de Cloudflare");
 
-    const dopplerCreateCall = mock.dopplerCalls.find(
-      (c) => c.url.endsWith("/projects") && c.method === "POST"
-    );
+    const dopplerCreateCall = mock.dopplerCalls.find((c) => c.url.endsWith("/projects") && c.method === "POST");
     assert(!!dopplerCreateCall, "el wizard no invocó la creación del proyecto Doppler");
 
-    const secretsCall = mock.dopplerCalls.find(
-      (c) => c.url.endsWith("/configs/config/secrets") && c.method === "POST"
-    );
+    const secretsCall = mock.dopplerCalls.find((c) => c.url.endsWith("/configs/config/secrets") && c.method === "POST");
     assert(!!secretsCall, "el wizard no seteó los secretos en Doppler");
     const secretsBody = secretsCall!.body as { secrets: Record<string, string> };
     assert(
@@ -27,14 +24,9 @@ export default async function run() {
       "el token del túnel de Cloudflare no se propagó al paso de Doppler"
     );
 
-    // Orden: la llamada de creación del túnel debe estar en el historial de
-    // Cloudflare antes de que exista cualquier llamada en el historial de
-    // Doppler, verificando el orden de dependencia cloudflare -> doppler.
-    assert(
-      mock.cloudflareCalls.length > 0 && mock.dopplerCalls.length > 0,
-      "ambos pasos deben haberse ejecutado"
-    );
+    assert(mock.cloudflareCalls.length > 0 && mock.dopplerCalls.length > 0, "ambos pasos deben haberse ejecutado");
   } finally {
     mock.restore();
+    await rm(dirname(configPath), { recursive: true, force: true });
   }
 }

@@ -1,18 +1,17 @@
+import type { StructuralConfig, SecretsConfig } from "../config-loader/schema";
+
 const CF_API_BASE = "https://api.cloudflare.com/client/v4";
 
 export interface BootstrapCloudflareTunnelInput {
-  apiToken: string;
-  accountId: string;
-  zoneId: string;
-  tunnelName: string;
-  publicHostname: string;
-  localPort: number;
+  secrets: Pick<SecretsConfig, "cloudflareApiToken" | "cloudflareAccountId" | "cloudflareZoneId">;
+  tunnel: StructuralConfig["cloudflareTunnel"];
 }
 
 export interface BootstrapCloudflareTunnelResult {
   tunnelId: string;
   tunnelToken: string;
-  dnsRecordId: string;
+  minecraftDnsRecordId: string;
+  apiDnsRecordId: string;
 }
 
 interface CloudflareApiResponse<T> {
@@ -50,48 +49,54 @@ async function cfRequest<T>(
   return body.result;
 }
 
-async function findExistingTunnel(
-  input: BootstrapCloudflareTunnelInput
-): Promise<CloudflareTunnel | null> {
+async function findExistingTunnel(input: BootstrapCloudflareTunnelInput): Promise<CloudflareTunnel | null> {
   const tunnels = await cfRequest<CloudflareTunnel[]>(
-    `/accounts/${input.accountId}/cfd_tunnel?name=${encodeURIComponent(input.tunnelName)}&is_deleted=false`,
-    input.apiToken
+    `/accounts/${input.secrets.cloudflareAccountId}/cfd_tunnel?name=${encodeURIComponent(input.tunnel.name)}&is_deleted=false`,
+    input.secrets.cloudflareApiToken
   );
-  return tunnels.find((tunnel) => tunnel.name === input.tunnelName) ?? null;
+  return tunnels.find((tunnel) => tunnel.name === input.tunnel.name) ?? null;
 }
 
 async function createTunnel(input: BootstrapCloudflareTunnelInput): Promise<CloudflareTunnel> {
-  return cfRequest<CloudflareTunnel>(`/accounts/${input.accountId}/cfd_tunnel`, input.apiToken, {
-    method: "POST",
-    body: JSON.stringify({ name: input.tunnelName, config_src: "cloudflare" }),
-  });
-}
-
-async function getTunnelToken(
-  input: BootstrapCloudflareTunnelInput,
-  tunnelId: string
-): Promise<string> {
-  return cfRequest<string>(
-    `/accounts/${input.accountId}/cfd_tunnel/${tunnelId}/token`,
-    input.apiToken
+  return cfRequest<CloudflareTunnel>(
+    `/accounts/${input.secrets.cloudflareAccountId}/cfd_tunnel`,
+    input.secrets.cloudflareApiToken,
+    {
+      method: "POST",
+      body: JSON.stringify({ name: input.tunnel.name, config_src: "cloudflare" }),
+    }
   );
 }
 
-async function configureIngress(
-  input: BootstrapCloudflareTunnelInput,
-  tunnelId: string
-): Promise<void> {
+async function getTunnelToken(input: BootstrapCloudflareTunnelInput, tunnelId: string): Promise<string> {
+  return cfRequest<string>(
+    `/accounts/${input.secrets.cloudflareAccountId}/cfd_tunnel/${tunnelId}/token`,
+    input.secrets.cloudflareApiToken
+  );
+}
+
+/**
+ * Un solo túnel, dos reglas de ingress (decisión registrada en AGENT.md):
+ * minecraft (TCP crudo, jugadores) y api (HTTP, edge-worker -> local-agent,
+ * spec 04). Cloudflare enruta cada regla a un destino local distinto sin
+ * que el tráfico se mezcle entre sí -- no requiere túneles separados.
+ */
+async function configureIngress(input: BootstrapCloudflareTunnelInput, tunnelId: string): Promise<void> {
   await cfRequest(
-    `/accounts/${input.accountId}/cfd_tunnel/${tunnelId}/configurations`,
-    input.apiToken,
+    `/accounts/${input.secrets.cloudflareAccountId}/cfd_tunnel/${tunnelId}/configurations`,
+    input.secrets.cloudflareApiToken,
     {
       method: "PUT",
       body: JSON.stringify({
         config: {
           ingress: [
             {
-              hostname: input.publicHostname,
-              service: `tcp://localhost:${input.localPort}`,
+              hostname: input.tunnel.minecraftHostname,
+              service: `tcp://localhost:${input.tunnel.minecraftLocalPort}`,
+            },
+            {
+              hostname: input.tunnel.apiHostname,
+              service: `http://localhost:${input.tunnel.apiLocalPort}`,
             },
             { service: "http_status:404" },
           ],
@@ -105,39 +110,44 @@ interface DnsRecord {
   id: string;
 }
 
-async function findExistingDnsRecord(
-  input: BootstrapCloudflareTunnelInput
-): Promise<DnsRecord | null> {
+async function findExistingDnsRecord(input: BootstrapCloudflareTunnelInput, hostname: string): Promise<DnsRecord | null> {
   const records = await cfRequest<DnsRecord[]>(
-    `/zones/${input.zoneId}/dns_records?type=CNAME&name=${encodeURIComponent(input.publicHostname)}`,
-    input.apiToken
+    `/zones/${input.secrets.cloudflareZoneId}/dns_records?type=CNAME&name=${encodeURIComponent(hostname)}`,
+    input.secrets.cloudflareApiToken
   );
   return records[0] ?? null;
 }
 
 async function createDnsRecord(
   input: BootstrapCloudflareTunnelInput,
-  tunnelId: string
+  tunnelId: string,
+  hostname: string
 ): Promise<DnsRecord> {
-  return cfRequest<DnsRecord>(`/zones/${input.zoneId}/dns_records`, input.apiToken, {
+  return cfRequest<DnsRecord>(`/zones/${input.secrets.cloudflareZoneId}/dns_records`, input.secrets.cloudflareApiToken, {
     method: "POST",
     body: JSON.stringify({
       type: "CNAME",
-      name: input.publicHostname,
+      name: hostname,
       content: `${tunnelId}.cfargotunnel.com`,
       proxied: false,
     }),
   });
 }
 
+async function ensureDnsRecord(input: BootstrapCloudflareTunnelInput, tunnelId: string, hostname: string): Promise<DnsRecord> {
+  const existing = await findExistingDnsRecord(input, hostname);
+  return existing ?? (await createDnsRecord(input, tunnelId, hostname));
+}
+
 /**
  * Crea (o reutiliza, si ya existe por nombre/hostname) el túnel remotely-managed
- * de Cloudflare, su ingress TCP genérico y el CNAME "DNS only" asociado.
+ * de Cloudflare, sus dos reglas de ingress y los CNAME "DNS only" asociados.
  *
- * Este es el método de exposición default del sistema: el wizard lo corre
- * automáticamente y deja el túnel autoconfigurado sin pasos manuales en el
- * dashboard de Cloudflare. Ver docs/specs/09_bootstrap_automation.md §5 para
- * el flujo completo (endpoints, shapes de request/response, e idempotencia).
+ * Este es el método de exposición default del sistema mientras spec 01 (VPS
+ * Oracle) esté pausado: el wizard lo corre automáticamente y deja el túnel
+ * autoconfigurado sin pasos manuales en el dashboard de Cloudflare. Ver
+ * docs/specs/09_bootstrap_automation.md §5 para el flujo original de un solo
+ * ingress; este bootstrap lo extiende a dos (ver AGENT.md, decisión de arquitectura).
  */
 export async function bootstrapCloudflareTunnel(
   input: BootstrapCloudflareTunnelInput
@@ -149,12 +159,13 @@ export async function bootstrapCloudflareTunnel(
 
   await configureIngress(input, tunnel.id);
 
-  const existingDnsRecord = await findExistingDnsRecord(input);
-  const dnsRecord = existingDnsRecord ?? (await createDnsRecord(input, tunnel.id));
+  const minecraftDnsRecord = await ensureDnsRecord(input, tunnel.id, input.tunnel.minecraftHostname);
+  const apiDnsRecord = await ensureDnsRecord(input, tunnel.id, input.tunnel.apiHostname);
 
   return {
     tunnelId: tunnel.id,
     tunnelToken,
-    dnsRecordId: dnsRecord.id,
+    minecraftDnsRecordId: minecraftDnsRecord.id,
+    apiDnsRecordId: apiDnsRecord.id,
   };
 }

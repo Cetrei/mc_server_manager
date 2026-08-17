@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { loadBootstrapConfig } from "../packages/config-loader/load";
 import { bootstrapCloudflareTunnel } from "../packages/cloudflare-bootstrap/bootstrap";
 
 /**
@@ -9,27 +10,20 @@ import { bootstrapCloudflareTunnel } from "../packages/cloudflare-bootstrap/boot
  *   doppler run --project minecraft_sm -- bun run scripts/bootstrap-cloudflare.ts
  */
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Falta la variable de entorno "${name}" (ver .env.example y Doppler).`);
-  }
-  return value;
-}
+const DEFAULT_CONFIG_PATH = new URL("../infra/config/bootstrap.yml", import.meta.url).pathname;
 
 async function main() {
+  const config = await loadBootstrapConfig(DEFAULT_CONFIG_PATH);
+
   const result = await bootstrapCloudflareTunnel({
-    apiToken: requireEnv("CLOUDFLARE_API_TOKEN"),
-    accountId: requireEnv("CLOUDFLARE_ACCOUNT_ID"),
-    zoneId: requireEnv("CLOUDFLARE_ZONE_ID"),
-    tunnelName: process.env.CLOUDFLARE_TUNNEL_NAME ?? "mc-server-manager",
-    publicHostname: requireEnv("MC_TUNNEL_DOMAIN"),
-    localPort: Number(process.env.MC_TUNNEL_LOCAL_PORT ?? "25565"),
+    secrets: config.secrets,
+    tunnel: config.structural.cloudflareTunnel,
   });
 
   console.log("Cloudflare Tunnel listo:");
   console.log(`  tunnelId: ${result.tunnelId}`);
-  console.log(`  dnsRecordId: ${result.dnsRecordId}`);
+  console.log(`  minecraftDnsRecordId: ${result.minecraftDnsRecordId}`);
+  console.log(`  apiDnsRecordId: ${result.apiDnsRecordId}`);
   console.log("  tunnelToken: (omitido del log, ver Doppler tras el próximo paso de doppler-bootstrap)");
 }
 

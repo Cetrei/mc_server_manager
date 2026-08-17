@@ -1,0 +1,20 @@
+# Config estructural no sensible del bootstrap (tech_stack.md §3, punto 2).
+# Ningún secreto va aquí — ver .env.example / Doppler para eso.
+#
+# Un solo túnel de Cloudflare, dos reglas de ingress (docs/decisions/0001-single-tunnel-dual-ingress.md):
+# minecraft (TCP, jugadores) y api (HTTP, edge-worker -> local-agent).
+
+cloudflareTunnel:
+  name: mc-server-manager
+  minecraftHostname: servermc.cetrei.dev
+  minecraftLocalPort: 25565
+  apiHostname: panel-api.cetrei.dev
+  # 8091: puerto del local-agent (Axum, spec 02). No documentado en ningún
+  # spec existente -- elegido fuera de colisión con Crafty (8123, spec 03)
+  # y con el puerto ya reservado en mc-stack.pod (9090, spec 03 §2).
+  # Confirmar con el spec de local-agent cuando se implemente su binding real.
+  apiLocalPort: 8091
+
+doppler:
+  projectName: minecraft_sm
+  configName: dev
