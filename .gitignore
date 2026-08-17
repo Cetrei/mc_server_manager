@@ -1,0 +1,36 @@
+# Secretos y config local — nunca versionados (docs/standards/infra-config.md)
+.env
+.env.local
+.env.*.local
+
+# Dependencias
+node_modules/
+apps/*/node_modules/
+packages/*/node_modules/
+
+# Bun
+.bun/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Quadlets renderizados con valores reales — solo la plantilla se versiona (infra/quadlets/)
+infra/quadlets/*.container
+!infra/quadlets/*.container.template
+
+# Build output (futuros apps compilados: local-agent en Rust, edge-worker, web-dashboard)
+target/
+dist/
+build/
+*.wasm
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Bun test coverage / cache, por si se agrega más adelante
+coverage/
+.bun-cache/
