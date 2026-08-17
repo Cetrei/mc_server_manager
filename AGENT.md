@@ -5,6 +5,7 @@
 ```text
 mc_server_manager/
 ├── AGENT.md                — este índice
+├── TODO.md                 — secuencia de implementación (componente completo -> test E2E propio -> siguiente fase), desde el bootstrap actual hasta el sistema completo
 ├── package.json             — raíz del monorepo, expone `bun run test` (ver tests/README.md)
 ├── tests/                   — TODOS los tests del proyecto, agnósticos de qué lenguaje use cada app. Ver tests/README.md para la convención completa.
 │   ├── run.ts                    — runner genérico invocado por `bun run test [grupo] [nombre]`
