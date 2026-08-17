@@ -1,0 +1,7 @@
+{
+  "name": "doppler-bootstrap",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "main": "bootstrap.ts"
+}
