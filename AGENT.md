@@ -19,7 +19,7 @@ mc_server_manager/
 │   ├── system_spec.md       — Requisitos funcionales y no-funcionales del sistema completo (interfaces /status y /dev, contrato de endpoints de alto nivel)
 │   ├── tech_stack.md        — Stack tecnológico completo: runtimes, infraestructura, capas de datos, networking, seguridad/auth, estructura del monorepo
 │   ├── ARCHITECTURE_CANVAS.pdf — Diagrama visual de arquitectura
-│   ├── standards/            — Convenciones obligatorias de todo el repo (testing, comentarios/clean code, config de infra generada, ubicación de documentación)
+│   ├── standards/            — Convenciones obligatorias de todo el repo (testing, comentarios/clean code, config de infra generada, ubicación de documentación, branching)
 │   ├── decisions/            — ADRs: decisiones de arquitectura puntuales no cubiertas (todavía) por un spec formal
 │   │   └── 0001-single-tunnel-dual-ingress.md — Un túnel de Cloudflare, dos reglas de ingress (TCP minecraft + HTTP api). Ver spec 09 §5 (desactualizado, describe solo el ingress TCP original)
 │   └── specs/
@@ -81,3 +81,4 @@ Todas las convenciones obligatorias (testing, comentarios/clean code, configurac
 * `docs/standards/infra-config.md`
 * `docs/standards/docs-location.md`
 * `docs/standards/commits.md`
+* `docs/standards/branching.md`

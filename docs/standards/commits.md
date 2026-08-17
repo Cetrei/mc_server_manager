@@ -6,7 +6,7 @@ Se usa [Conventional Commits](https://www.conventionalcommits.org/), verificado 
 * Tipos permitidos: `feat`, `fix`, `docs`, `test`, `chore`, `refactor`, `style`, `perf`, `ci`, `build`, `revert`.
 * El scope, cuando aplica, es el nombre del paquete/app/spec afectado (ej. `feat(cloudflare-bootstrap): ...`, `docs(spec-09): ...`).
 * Un commit = un cambio lógico. No mezclar un `feat` con un `chore` no relacionado en el mismo commit.
-* Cada feature/paquete nuevo se desarrolla en su propia rama (`feat/<nombre>`) y se mergea a `main` vía PR — nunca push directo a `main` salvo el commit inicial de bootstrap del repo.
+* Qué rama usar para cada commit, cómo nombrarla, y cómo llega a `main` vía PR: ver `docs/standards/branching.md`.
 
 ## Instalación del hook
 
