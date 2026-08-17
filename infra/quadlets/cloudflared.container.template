@@ -1,0 +1,16 @@
+[Unit]
+Description=Cloudflare Tunnel Container
+After=local-agent.container
+
+[Container]
+Pod=mc-stack.pod
+Image=docker.io/cloudflare/cloudflared:latest
+ContainerName=cloudflared
+Exec=tunnel --no-autoupdate run --token {{CLOUDFLARE_TUNNEL_TOKEN}}
+
+[Service]
+Restart=always
+RestartSec=10s
+
+[Install]
+WantedBy=default.target
