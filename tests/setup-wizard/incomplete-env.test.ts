@@ -1,8 +1,11 @@
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import { runSetupWizard } from "../../apps/setup-wizard/index";
-import { installCombinedFreshMock, MOCK_ENV, assert } from "./_mock-wizard-env";
+import { installCombinedFreshMock, writeMockStructuralConfig, MOCK_ENV, assert } from "./_mock-wizard-env";
 
 export default async function run() {
   const mock = installCombinedFreshMock();
+  const configPath = await writeMockStructuralConfig();
 
   try {
     const incompleteEnv: NodeJS.ProcessEnv = { ...MOCK_ENV };
@@ -11,30 +14,25 @@ export default async function run() {
 
     let thrown: Error | null = null;
     try {
-      await runSetupWizard(incompleteEnv);
+      await runSetupWizard(configPath, incompleteEnv);
     } catch (error) {
       thrown = error instanceof Error ? error : new Error(String(error));
     }
 
-    assert(thrown !== null, "el wizard debió fallar ante un .env incompleto");
+    assert(thrown !== null, "el wizard debió fallar ante un entorno de secretos incompleto");
     assert(
-      thrown!.message.includes("CLOUDFLARE_API_TOKEN"),
-      "el mensaje de error no menciona la variable CLOUDFLARE_API_TOKEN faltante"
+      thrown!.message.includes("cloudflareApiToken"),
+      "el mensaje de error no menciona el campo cloudflareApiToken faltante"
     );
     assert(
-      thrown!.message.includes("DOPPLER_API_TOKEN"),
-      "el mensaje de error no menciona la variable DOPPLER_API_TOKEN faltante"
+      thrown!.message.includes("dopplerApiToken"),
+      "el mensaje de error no menciona el campo dopplerApiToken faltante"
     );
 
-    assert(
-      mock.cloudflareCalls.length === 0,
-      "no debió invocar ningún paquete de bootstrap si faltan variables requeridas"
-    );
-    assert(
-      mock.dopplerCalls.length === 0,
-      "no debió invocar ningún paquete de bootstrap si faltan variables requeridas"
-    );
+    assert(mock.cloudflareCalls.length === 0, "no debió invocar ningún paquete de bootstrap si faltan secretos requeridos");
+    assert(mock.dopplerCalls.length === 0, "no debió invocar ningún paquete de bootstrap si faltan secretos requeridos");
   } finally {
     mock.restore();
+    await rm(dirname(configPath), { recursive: true, force: true });
   }
 }

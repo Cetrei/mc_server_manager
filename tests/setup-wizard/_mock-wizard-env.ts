@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { MOCK_INPUT as CF_MOCK_INPUT, installFreshAccountMock as installFreshCloudflareMock } from "../cloudflare-bootstrap/_mock-cloudflare-api";
 import { installFreshAccountMock as installFreshDopplerMock } from "../doppler-bootstrap/_mock-doppler-api";
 
@@ -33,16 +36,35 @@ export function installCombinedFreshMock() {
   };
 }
 
+/**
+ * Escribe un infra/config/bootstrap.yml temporal consistente con MOCK_INPUT
+ * de cloudflare-bootstrap y doppler-bootstrap, para que el wizard (que ahora
+ * lee config estructural desde .yml, no desde env) tenga un config path real
+ * contra el cual correr en los tests.
+ */
+export async function writeMockStructuralConfig(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "setup-wizard-test-"));
+  const path = join(dir, "bootstrap.yml");
+  const yaml = `
+cloudflareTunnel:
+  name: ${CF_MOCK_INPUT.tunnel.name}
+  minecraftHostname: ${CF_MOCK_INPUT.tunnel.minecraftHostname}
+  minecraftLocalPort: ${CF_MOCK_INPUT.tunnel.minecraftLocalPort}
+  apiHostname: ${CF_MOCK_INPUT.tunnel.apiHostname}
+  apiLocalPort: ${CF_MOCK_INPUT.tunnel.apiLocalPort}
+doppler:
+  projectName: minecraft_sm
+  configName: dev
+`;
+  await writeFile(path, yaml);
+  return path;
+}
+
 export const MOCK_ENV: NodeJS.ProcessEnv = {
-  CLOUDFLARE_API_TOKEN: CF_MOCK_INPUT.apiToken,
-  CLOUDFLARE_ACCOUNT_ID: CF_MOCK_INPUT.accountId,
-  CLOUDFLARE_ZONE_ID: CF_MOCK_INPUT.zoneId,
-  CLOUDFLARE_TUNNEL_NAME: CF_MOCK_INPUT.tunnelName,
-  MC_TUNNEL_DOMAIN: CF_MOCK_INPUT.publicHostname,
-  MC_TUNNEL_LOCAL_PORT: String(CF_MOCK_INPUT.localPort),
+  CLOUDFLARE_API_TOKEN: CF_MOCK_INPUT.secrets.cloudflareApiToken,
+  CLOUDFLARE_ACCOUNT_ID: CF_MOCK_INPUT.secrets.cloudflareAccountId,
+  CLOUDFLARE_ZONE_ID: CF_MOCK_INPUT.secrets.cloudflareZoneId,
   DOPPLER_API_TOKEN: "mock-doppler-token",
-  DOPPLER_PROJECT_NAME: "minecraft_sm",
-  DOPPLER_CONFIG_NAME: "dev",
 };
 
 export function assert(cond: boolean, msg: string): void {
