@@ -1,0 +1,14 @@
+{
+  "name": "config-loader",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "main": "load.ts",
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9"
+  }
+}
